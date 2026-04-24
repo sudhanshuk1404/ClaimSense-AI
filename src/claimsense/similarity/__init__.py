@@ -1,2 +1,0 @@
-"""Similarity retrieval package."""
-

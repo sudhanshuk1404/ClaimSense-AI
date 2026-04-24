@@ -1,2 +1,0 @@
-"""Deterministic rules engine."""
-
