@@ -1,0 +1,11 @@
+Medicare:
+  timely_filing_days: 365
+  source: CMS
+Aetna:
+  timely_filing_days: 180
+  source: Contract estimate
+Commercial_Default:
+  timely_filing_days_min: 90
+  timely_filing_days_max: 180
+  requires_payer_specific_review: true
+

@@ -1,0 +1,18 @@
+medical_necessity:
+  next_steps:
+    - Confirm prior authorization requirements.
+    - Gather chart notes and imaging indications.
+    - Reference payer medical policy in the appeal.
+timely_filing:
+  next_steps:
+    - Validate date of service and payer receipt evidence.
+    - Confirm delay reason or corrected claim eligibility.
+missing_information:
+  next_steps:
+    - Correct missing claim elements.
+    - Resubmit with required attachments or diagnosis pointers.
+duplicate:
+  next_steps:
+    - Search for a prior submission or replacement claim.
+    - Avoid rebilling if a paid claim already exists.
+
