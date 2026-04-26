@@ -1,37 +1,22 @@
 """API-layer request and response schemas.
 
-These are separate from the domain models in src/models.py:
-- src/models.py  → internal domain objects (EDI data, analysis outputs)
-- api/schemas.py → HTTP request bodies and API-specific response envelopes
-
-Keeping them separate lets the API contract evolve independently of the
-internal model structure.
+Kept intentionally minimal — only what the 3 core endpoints actually need.
+Domain models live in src/models.py; these schemas handle HTTP contract only.
 """
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 from pydantic import BaseModel, Field
 
-from src.models import (
-    DenialAnalysis,
-    PatternMatchResult,
-    BatchIntelligenceReport,
-    EDI835Claim,
-    EDI837Claim,
-)
-
-
-# ---------------------------------------------------------------------------
-# Request bodies
-# ---------------------------------------------------------------------------
+from src.models import DenialAnalysis, EDI835Claim, EDI837Claim, PatternMatchResult
 
 
 class AnalyzeClaimRequest(BaseModel):
-    """Body for POST /api/v1/claims/analyze — submit raw 835+837 data."""
+    """Request body for POST /api/v1/claims/analyze."""
 
-    edi835: EDI835Claim = Field(..., description="EDI 835 remittance data for the denied claim")
-    edi837: EDI837Claim = Field(..., description="EDI 837 original claim submission data")
+    edi835: EDI835Claim = Field(..., description="EDI 835 remittance data")
+    edi837: EDI837Claim = Field(..., description="EDI 837 original claim submission")
 
     model_config = {
         "json_schema_extra": {
@@ -64,37 +49,11 @@ class AnalyzeClaimRequest(BaseModel):
     }
 
 
-class PatternMatchRequest(BaseModel):
-    """Body for POST /api/v1/patterns/match — submit a custom claim for pattern matching."""
-
-    edi835: EDI835Claim
-    edi837: EDI837Claim
-    top_k: int = Field(default=5, ge=1, le=20, description="Number of similar claims to retrieve")
-
-
-# ---------------------------------------------------------------------------
-# Shared response envelope
-# ---------------------------------------------------------------------------
-
-
-class APIResponse(BaseModel):
-    """Standard envelope wrapping every API response."""
-
-    success: bool = True
-    data: Any
-    meta: dict = Field(default_factory=dict)
-
-
-# ---------------------------------------------------------------------------
-# Claim summary (lightweight list view)
-# ---------------------------------------------------------------------------
-
-
 class ClaimSummary(BaseModel):
-    """Lightweight claim representation for list endpoints."""
+    """Lightweight claim info returned by GET /api/v1/claims."""
 
     claim_id: str
-    outcome: str                          # "denied" | "paid"
+    outcome: str
     payer: Optional[str] = None
     procedure_code: Optional[str] = None
     insurance_type: Optional[str] = None
@@ -104,33 +63,10 @@ class ClaimSummary(BaseModel):
     service_date: Optional[str] = None
 
 
-# ---------------------------------------------------------------------------
-# Combined analysis response (Problem 1 + 2 together)
-# ---------------------------------------------------------------------------
-
-
 class FullClaimAnalysis(BaseModel):
-    """Combined root-cause + pattern response returned by the analysis endpoints."""
+    """Combined Problem 1 + Problem 2 response."""
 
     claim_id: str
     root_cause_analysis: DenialAnalysis
     pattern_match: Optional[PatternMatchResult] = None
-    estimated_cost_usd: float = Field(
-        default=0.0,
-        description="Estimated OpenAI API cost for this analysis"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Batch request
-# ---------------------------------------------------------------------------
-
-
-class BatchRequest(BaseModel):
-    """Optional body for POST /api/v1/batch/cluster — allows overriding the dataset."""
-
-    claims: Optional[list[dict]] = Field(
-        default=None,
-        description="If provided, cluster these claims instead of the loaded dataset. "
-                    "Each item must have 'edi835' and 'edi837' keys."
-    )
+    estimated_cost_usd: float = 0.0

@@ -1,11 +1,16 @@
 """ClaimSense AI — FastAPI application.
 
-Startup flow (lifespan):
-  1. Load all claims from the synthetic dataset into memory
-  2. Initialise the OpenAI LLM client
-  3. Pre-index historical claims for the PatternMatcher (embeds every claim
-     once so individual requests don't pay the embedding cost)
-  4. Expose the shared objects through FastAPI dependency injection
+Four endpoints, one per responsibility:
+  GET  /health                    → liveness probe
+  GET  /api/v1/claims             → list claims (for UI)
+  POST /api/v1/claims/analyze     → Problem 1 + 2
+  GET  /api/v1/batch/cluster      → Problem 3
+
+Startup (lifespan):
+  1. Load 22 synthetic claims from data/synthetic_claims.json
+  2. Init OpenAI LLM client
+  3. Pre-embed all claims via text-embedding-3-small so the first
+     pattern-match request is fast
 """
 
 from __future__ import annotations
@@ -16,45 +21,29 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from api.dependencies import AppState, get_app_state
-from api.routers import batch, claims, patterns
-
-
-# ---------------------------------------------------------------------------
-# Lifespan — runs once at startup and again at shutdown
-# ---------------------------------------------------------------------------
+from api.dependencies import get_app_state
+from api.routers import batch, claims
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialise heavy objects once at startup; release on shutdown."""
     state = get_app_state()
-    await state.initialise()          # load claims + embed index (blocking I/O in thread)
+    await state.initialise()
     yield
     await state.teardown()
-
-
-# ---------------------------------------------------------------------------
-# App
-# ---------------------------------------------------------------------------
 
 
 app = FastAPI(
     title="ClaimSense AI",
     description=(
         "AI-powered healthcare claim denial analysis.\n\n"
-        "**Three core capabilities:**\n"
-        "- **Problem 1** `/claims` — Root cause analysis per denied claim\n"
-        "- **Problem 2** `/patterns` — Historical pattern matching & appeal strategy\n"
-        "- **Problem 3** `/batch` — Denial clustering & batch intelligence report"
+        "- **POST /api/v1/claims/analyze** — Problem 1 (root cause) + Problem 2 (pattern match)\n"
+        "- **GET  /api/v1/batch/cluster**  — Problem 3 (batch clustering & intelligence)"
     ),
     version="1.0.0",
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
 )
 
-# Allow all origins for local development; restrict in production
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -62,35 +51,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------------------------------------------------
-# Routers
-# ---------------------------------------------------------------------------
-
-app.include_router(claims.router,   prefix="/api/v1/claims",   tags=["Problem 1 — Root Cause Analysis"])
-app.include_router(patterns.router, prefix="/api/v1/patterns", tags=["Problem 2 — Pattern Matching"])
-app.include_router(batch.router,    prefix="/api/v1/batch",     tags=["Problem 3 — Batch Intelligence"])
-
-
-# ---------------------------------------------------------------------------
-# Root
-# ---------------------------------------------------------------------------
+app.include_router(claims.router, prefix="/api/v1/claims", tags=["Claims — P1 & P2"])
+app.include_router(batch.router,  prefix="/api/v1/batch",  tags=["Batch — P3"])
 
 
 @app.get("/", include_in_schema=False)
 async def root():
-    """Redirect bare root to interactive API docs."""
     return RedirectResponse(url="/docs")
 
 
 @app.get("/health", tags=["Health"])
 async def health():
-    """Liveness probe — returns service status and dataset stats."""
     state = get_app_state()
     return {
         "status": "ok",
         "model": state.llm.model,
-        "total_claims_loaded": len(state.all_claims),
-        "denied_claims": len([c for c in state.all_claims if c.is_denied]),
-        "paid_claims":   len([c for c in state.all_claims if not c.is_denied]),
+        "total_claims": len(state.all_claims),
+        "denied_claims": len(state.denied_claims),
+        "paid_claims": len(state.paid_claims),
         "index_ready": state.index_ready,
     }
